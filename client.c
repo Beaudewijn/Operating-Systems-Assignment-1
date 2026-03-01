@@ -55,9 +55,9 @@ int main (int argc, char * argv[])
             break;
         }
 
-        REQ_QUEUE msg;
+        req_msg_t msg;
         msg.request_id = jobID;
-        msg.service_id = service_ID;
+        msg.service_id = serviceID;
         msg.data = data;
 
         if (mq_send(req_queue, (const char*)&msg, sizeof(req_msg_t), 0) == -1) {
