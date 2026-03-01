@@ -24,19 +24,19 @@ typedef struct {
     int request_id;
     int service_id;
     int data;
-} REQ_QUEUE;
+} req_msg_t;
 
 //S1_queue, S2_queue
 typedef struct {
     int request_id;
     int data;
-} JOB_QUEUE;
+} job_msg_t;
 
 //Rsp_queue
 typedef struct {
     int request_id;
     int result;
-} RESPONSE_QUEUE
+} rsp_msg_t;
 
 
 #endif
