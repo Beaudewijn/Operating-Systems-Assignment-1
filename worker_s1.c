@@ -50,7 +50,7 @@ int main (int argc, char * argv[])
 
     while (true) {
         job_msg_t job;
-        mq_receive(s1_queue, (char *) &job, sizeof (s1_queue), NULL);
+        mq_receive(s1_queue, (char *) &job, sizeof (job), NULL);
 
         rsleep(10000);
 
@@ -59,7 +59,7 @@ int main (int argc, char * argv[])
         rsp.request_id = job.request_id;
         rsp.result = result;
 
-        mq_send(rsp_queue, (const char*)&rsp, sizeof(rsp_queue), 0);
+        mq_send(rsp_queue, (const char*)&rsp, sizeof(rsp), 0);
     }
     mq_close(s1_queue);
     mq_close(rsp_queue);

@@ -234,9 +234,12 @@ int main (int argc, char * argv[])
         // if client is done and there are no jobs left currently being processed then start termination
         if (client_done && pending_jobs <= 0)
         {
-            // also make sure there are no job responses left that need to be printed
-            struct mq_attr a;
-            if (mq_getattr(mq_fd_response, &a) == 0 && a.mq_curmsgs == 0)
+            // also make sure there are no job responses left that need to be printed nor are there requests not yet sent to workers
+            struct mq_attr a_req, a_rsp;
+            if (mq_getattr(mq_fd_request, &a_req) == 0 
+                && mq_getattr(mq_fd_response, &a_rsp) == 0 
+                && a_req.mq_curmsgs == 0 
+                && a_rsp.mq_curmsgs == 0)
             {
                 break;
             }
