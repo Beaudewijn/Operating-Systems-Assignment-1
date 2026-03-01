@@ -110,7 +110,7 @@ int main (int argc, char * argv[])
         }
         if (workers_s1[i] == 0)
         {
-            execlp("./worker_s1", "worker_s1", worker2dealer_name, dealer2worker1_name, NULL);
+            execlp("./worker_s1", "worker_s1", dealer2worker1_name, worker2dealer_name, NULL);
             perror("execlp worker_s1 failed");
             exit(1);
         }
@@ -129,7 +129,7 @@ int main (int argc, char * argv[])
         }
         if (workers_s2[i] == 0)
         {
-            execlp("./worker_s2", "worker_s2", worker2dealer_name, dealer2worker2_name, NULL);
+            execlp("./worker_s2", "worker_s2", dealer2worker2_name, worker2dealer_name, NULL);
             perror("execlp worker_s2 failed");
             exit(1);
         }
