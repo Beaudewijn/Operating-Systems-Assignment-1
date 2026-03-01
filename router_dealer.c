@@ -31,6 +31,7 @@
 #include "messages.h"
 
 #define STUDENT_NAME "42"
+#define SIGTERM 15
 
 char client2dealer_name[30];
 char dealer2worker1_name[30];

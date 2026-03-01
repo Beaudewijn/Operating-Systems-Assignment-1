@@ -50,7 +50,7 @@ int main (int argc, char * argv[])
 
     while (true) {
         job_msg_t job;
-        mq_receive(s1_queue, (char *) &job, sizeof (s1_queue), NULL)
+        mq_receive(s1_queue, (char *) &job, sizeof (s1_queue), NULL);
 
         rsleep(10000);
 
