@@ -46,6 +46,27 @@ int main (int argc, char * argv[])
     //    until there are no more tasks to do
     //  * close the message queues
 
+    char *s2_queue_name = argv[1];
+    char *rsp_queue_name = argv[2];
+    mqd_t s2_queue = mq_open(s2_queue_name, O_RDONLY);
+    mqd_t rsp_queue = mq_open(rsp_queue_name, O_WRONLY);
+
+    while (true) {
+        job_msg_t job;
+        mq_receive(s2_queue, (char *) &job, sizeof (s2_queue), NULL)
+
+        rsleep(10000);
+
+        int result = service(job.data);
+        rsp_msg_t rsp;
+        rsp.request_id = job.request_id;
+        rsp.result = result;
+
+        mq_send(rsp_queue, (const char*)&rsp, sizeof(rsp_queue), 0);
+    }
+    mq_close(s2_queue);
+    mq_close(rsp_queue);
+
     return(0);
 }
 
