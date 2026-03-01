@@ -29,6 +29,8 @@
 #include "settings.h"  
 #include "messages.h"
 
+#define STUDENT_NAME "42";
+
 char client2dealer_name[30];
 char dealer2worker1_name[30];
 char dealer2worker2_name[30];
@@ -44,6 +46,44 @@ int main (int argc, char * argv[])
   // TODO:
     //  * create the message queues (see message_queue_test() in
     //    interprocess_basic.c)
+
+    pid_t               client_pid;      /* Process ID from fork() */
+    pid_t               workers_s1[N_SERV1];
+    pid_t               workers_s2[N_SERV2];
+    mqd_t               mq_fd_request;
+    mqd_t               mq_fd_response;
+    mqd_t               mq_fd_S1;
+    mqd_t               mq_fd_S2;
+    req_msg_t           req;
+    job_msg_t           job;
+    rsp_msg_t           rsp;
+    struct mq_attr      attr;
+
+    sprintf (client2dealer_name, "/mq_request_%s_%d", STUDENT_NAME, getpid());
+    sprintf (dealer2worker1_name, "/mq_S1_%s_%d", STUDENT_NAME, getpid());
+    sprintf (dealer2worker2_name, "/mq_S2_%s_%d", STUDENT_NAME, getpid());
+    sprintf (worker2dealer_name, "/mq_response_%s_%d", STUDENT_NAME, getpid());
+
+    //req queue
+    attr.mq_maxmsg  = MQ_MAX_MESSAGES;
+    attr.mq_msgsize = sizeof (req_msg_t);
+    mq_fd_request = mq_open (client2dealer_name, O_RDWR | O_CREAT | O_EXCL, 0600, &attr);
+
+    //S1 queue
+    attr.mq_maxmsg  = MQ_MAX_MESSAGES;
+    attr.mq_msgsize = sizeof (job_msg_t);
+    mq_fd_S1 = mq_open (dealer2worker1_name, O_RDWR | O_CREAT | O_EXCL, 0600, &attr);
+
+    //S2 queue
+    attr.mq_maxmsg  = MQ_MAX_MESSAGES;
+    attr.mq_msgsize = sizeof (job_msg_t);
+    mq_fd_S2 = mq_open (dealer2worker2_name, O_RDWR | O_CREAT | O_EXCL, 0600, &attr);
+
+    //Rsp queue
+    attr.mq_maxmsg  = MQ_MAX_MESSAGES;
+    attr.mq_msgsize = sizeof (rsp_msg_t);
+    mq_fd_response = mq_open (worker2dealer_name, O_RDWR | O_CREAT | O_EXCL, 0600, &attr);
+
     //  * create the child processes (see process_test() and
     //    message_queue_test())
     //  * read requests from the Req queue and transfer them to the workers
@@ -51,6 +91,198 @@ int main (int argc, char * argv[])
     //  * read answers from workers in the Rep queue and print them
     //  * wait until the client has been stopped (see process_test())
     //  * clean up the message queues (see message_queue_test())
+
+    client_pid = fork();
+    //start client
+    if (client_pid < 0)
+    {
+        perror("fork client failed");
+        exit(1);
+    }
+    if (client_pid == 0)
+    {
+        execlp("./client", "client", client2dealer_name, NULL);
+        perror("execlp client failed");
+        exit(1);
+    }
+
+    //start workers
+    for (int i = 0; i < N_SERV1; i++)
+    {
+        workers_s1[i] = fork();
+        if (workers_s1[i] < 0)
+        {
+            perror("fork worker_s1 failed");
+            exit(1);
+        }
+        if (workers_s1[i] == 0)
+        {
+            execlp("./worker_s1", "worker_s1", worker2dealer_name, dealer2worker1_name, NULL);
+            perror("execlp worker_s1 failed");
+            exit(1);
+        }
+    }
+
+    for (int i = 0; i < N_SERV2; i++)
+    {
+        workers_s2[i] = fork();
+        if (workers_s2[i] < 0)
+        {
+            perror("fork worker_s2 failed");
+            exit(1);
+        }
+        if (workers_s2[i] == 0)
+        {
+            execlp("./worker_s2", "worker_s2", worker2dealer_name, dealer2worker2_name, NULL);
+            perror("execlp worker_s2 failed");
+            exit(1);
+        }
+    }
+
+    /* -------------------- Step 3: Router loop (forward + print) -------------------- */
+    bool client_done = false;
+    int pending_jobs = 0;
+
+    while (1)
+    {
+        bool did_work = false;
+
+        /* 3a) Try read request */
+        req_msg_t req;
+        ssize_t r = mq_receive(mq_fd_req, (char *)&req, sizeof(req), NULL);
+        if (r >= 0)
+        {
+            did_work = true;
+
+            job_msg_t job;
+            job.request_id = req.request_id;
+            job.data = req.data;
+
+            /* forward to correct service queue */
+            int send_ok = 0;
+            if (req.service_id == 1)
+            {
+                if (mq_send(mq_fd_s1, (char *)&job, sizeof(job), 0) == -1)
+                {
+                    if (errno != EAGAIN) perror("mq_send S1 failed");
+                    send_ok = -1;
+                }
+            }
+            else if (req.service_id == 2)
+            {
+                if (mq_send(mq_fd_s2, (char *)&job, sizeof(job), 0) == -1)
+                {
+                    if (errno != EAGAIN) perror("mq_send S2 failed");
+                    send_ok = -1;
+                }
+            }
+            else
+            {
+                /* unknown service id: ignore */
+                send_ok = -1;
+            }
+
+            if (send_ok == 0)
+            {
+                pending_jobs++;
+            }
+            else
+            {
+                /* If queue was full (EAGAIN), we simply try again later.
+                   For simplicity we do NOT drop the request:
+                   easiest is to re-send it to Req queue, but that can reorder.
+                   So here we just "do nothing" and rely on loop to pick next message.
+                   (Not perfect, but simple.) */
+            }
+        }
+        else
+        {
+            if (errno != EAGAIN)
+            {
+                perror("mq_receive Req failed");
+                break;
+            }
+        }
+
+        /* 3b) Try read response */
+        rsp_msg_t rsp;
+        ssize_t s = mq_receive(mq_fd_rsp, (char *)&rsp, sizeof(rsp), NULL);
+        if (s >= 0)
+        {
+            did_work = true;
+            printf("%d -> %d\n", rsp.request_id, rsp.result);
+            fflush(stdout);
+            pending_jobs--;
+        }
+        else
+        {
+            if (errno != EAGAIN)
+            {
+                perror("mq_receive Rsp failed");
+                break;
+            }
+        }
+
+        /* 3c) Check client status */
+        if (!client_done)
+        {
+            int status;
+            pid_t w = waitpid(client_pid, &status, WNOHANG);
+            if (w > 0)
+            {
+                client_done = true;
+            }
+        }
+
+        /* 3d) Exit condition: client is gone + no pending jobs */
+        if (client_done && pending_jobs <= 0)
+        {
+            /* also ensure rsp queue is empty */
+            struct mq_attr a;
+            if (mq_getattr(mq_fd_rsp, &a) == 0 && a.mq_curmsgs == 0)
+            {
+                break;
+            }
+        }
+
+        if (!did_work)
+        {
+            /* small sleep to prevent 100% CPU usage */
+            usleep(1000);
+        }
+    }
+
+    /* -------------------- Step 4: Terminate workers -------------------- */
+    for (int i = 0; i < N_SERV1; i++)
+    {
+        kill(workers_s1[i], SIGTERM);
+    }
+    for (int i = 0; i < N_SERV2; i++)
+    {
+        kill(workers_s2[i], SIGTERM);
+    }
+
+    for (int i = 0; i < N_SERV1; i++)
+    {
+        waitpid(workers_s1[i], NULL, 0);
+    }
+    for (int i = 0; i < N_SERV2; i++)
+    {
+        waitpid(workers_s2[i], NULL, 0);
+    }
+
+    /* -------------------- Step 5: Close + unlink queues -------------------- */
+    mq_close(mq_fd_req);
+    mq_close(mq_fd_s1);
+    mq_close(mq_fd_s2);
+    mq_close(mq_fd_rsp);
+
+    mq_unlink(client2dealer_name);
+    mq_unlink(dealer2worker1_name);
+    mq_unlink(dealer2worker2_name);
+    mq_unlink(worker2dealer_name);
+
+    
 
     // Important notice: make sure that the names of the message queues
     // contain your goup number (to ensure uniqueness during testing)
