@@ -2,8 +2,9 @@
  * Operating Systems  (2INCO)  Practical Assignment
  * Interprocess Communication
  *
- * STUDENT_NAME_1 (STUDENT_NR_1)
- * STUDENT_NAME_2 (STUDENT_NR_2)
+ * Beau Pullens (2099993)
+ * Jingxuan Zhang (2088746)
+ * Anna Schrasser (2069237)
  *
  * Grading:
  * Your work will be evaluated based on the following criteria:
