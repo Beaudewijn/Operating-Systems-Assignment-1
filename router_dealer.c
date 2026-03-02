@@ -165,6 +165,9 @@ int main (int argc, char * argv[]) {
                         break;
                     }
                 }
+            } else {
+                // invalid service number, ignore the request
+                have_req = false;
             }
         }
 
