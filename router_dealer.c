@@ -134,7 +134,7 @@ int main (int argc, char * argv[]) {
     while (true) {
         // if not yet storing a request, try to read a new one
         if (!have_req) {
-            ssize_t r = mq_receive(mq_fd_request, (char *)&req, sizeof(req), NULL);
+            ssize_t r = mq_receive(mq_fd_request, (char *)&held_req, sizeof(held_req), NULL);
             if (r >= 0) {
                 have_req = true;
             } else if (errno != EAGAIN) {
@@ -154,7 +154,7 @@ int main (int argc, char * argv[]) {
             if (held_req.service_id == 1 || held_req.service_id == 2) {
                 mqd_t target = (held_req.service_id == 1) ? mq_fd_S1 : mq_fd_S2;
 
-                if (mq_send(mq_fd_S1, (char *)&job, sizeof(job), 0) == 0) {
+                if (mq_send(target, (char *)&job, sizeof(job), 0) == 0) {
                     // forwarded successfully, increase num of pending jobs and remove currently held message
                     pending_jobs++;
                     have_req = false;
