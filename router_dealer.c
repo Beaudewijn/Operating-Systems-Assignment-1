@@ -38,10 +38,8 @@ char dealer2worker1_name[30];
 char dealer2worker2_name[30];
 char worker2dealer_name[30];
 
-int main (int argc, char * argv[])
-{
-  if (argc != 1)
-  {
+int main (int argc, char * argv[]) {
+  if (argc != 1) {
     fprintf (stderr, "%s: invalid arguments\n", argv[0]);
   }
   
@@ -64,11 +62,11 @@ int main (int argc, char * argv[])
 
     // S1 queue
     attr.mq_msgsize = sizeof (job_msg_t);
-    mqd_t mq_fd_S1 = mq_open (dealer2worker1_name, O_RDWR | O_CREAT | O_EXCL, 0600, &attr);
+    mqd_t mq_fd_S1 = mq_open (dealer2worker1_name, O_RDWR | O_CREAT | O_EXCL | O_NONBLOCK, 0600, &attr);
 
     // S2 queue
     attr.mq_msgsize = sizeof (job_msg_t);
-    mqd_t mq_fd_S2 = mq_open (dealer2worker2_name, O_RDWR | O_CREAT | O_EXCL, 0600, &attr);
+    mqd_t mq_fd_S2 = mq_open (dealer2worker2_name, O_RDWR | O_CREAT | O_EXCL | O_NONBLOCK, 0600, &attr);
 
     // response queue
     attr.mq_msgsize = sizeof (rsp_msg_t);
@@ -85,13 +83,11 @@ int main (int argc, char * argv[])
     // start client
     pid_t client_pid = fork();
 
-    if (client_pid < 0)
-    {
+    if (client_pid < 0) {
         perror("fork client failed");
         exit(1);
     }
-    if (client_pid == 0)
-    {
+    if (client_pid == 0) {
         execlp("./client", "client", client2dealer_name, NULL);
         perror("execlp client failed");
         exit(1);
@@ -100,16 +96,13 @@ int main (int argc, char * argv[])
     // start workers for service 1
     pid_t workers_s1[N_SERV1];
     
-    for (int i = 0; i < N_SERV1; i++)
-    {
+    for (int i = 0; i < N_SERV1; i++) {
         workers_s1[i] = fork();
-        if (workers_s1[i] < 0)
-        {
+        if (workers_s1[i] < 0) {
             perror("fork worker_s1 failed");
             exit(1);
         }
-        if (workers_s1[i] == 0)
-        {
+        if (workers_s1[i] == 0) {
             execlp("./worker_s1", "worker_s1", dealer2worker1_name, worker2dealer_name, NULL);
             perror("execlp worker_s1 failed");
             exit(1);
@@ -119,16 +112,13 @@ int main (int argc, char * argv[])
     // start workers for service 2
     pid_t workers_s2[N_SERV2];
 
-    for (int i = 0; i < N_SERV2; i++)
-    {
+    for (int i = 0; i < N_SERV2; i++) {
         workers_s2[i] = fork();
-        if (workers_s2[i] < 0)
-        {
+        if (workers_s2[i] < 0) {
             perror("fork worker_s2 failed");
             exit(1);
         }
-        if (workers_s2[i] == 0)
-        {
+        if (workers_s2[i] == 0) {
             execlp("./worker_s2", "worker_s2", dealer2worker2_name, worker2dealer_name, NULL);
             perror("execlp worker_s2 failed");
             exit(1);
@@ -138,83 +128,56 @@ int main (int argc, char * argv[])
     bool client_done = false;
     int pending_jobs = 0;
 
-    while (true)
-    {
-        // try to read a request
-        req_msg_t req;
-        ssize_t r = mq_receive(mq_fd_request, (char *)&req, sizeof(req), NULL);
-        if (r >= 0)
-        {
-            // create job object
-            job_msg_t job;
-            job.request_id = req.request_id;
-            job.data = req.data;
+    bool have_req = false;
+    req_msg_t held_req;
 
-            // attempt to write job to correct service queue
-            int send_ok = 0;
-            if (req.service_id == 1)
-            {
-                if (mq_send(mq_fd_S1, (char *)&job, sizeof(job), 0) == -1)
-                {
-                    if (errno != EAGAIN) {
-                        perror("mq_send S1 failed");
-                    }
-                    send_ok = -1;
-                }
-            }
-            else if (req.service_id == 2)
-            {
-                if (mq_send(mq_fd_S2, (char *)&job, sizeof(job), 0) == -1)
-                {
-                    if (errno != EAGAIN) {
-                        perror("mq_send S2 failed");
-                    }
-                    send_ok = -1;
-                }
-            }
-            else
-            {
-                /* unknown service id: ignore */
-                send_ok = -1;
-            }
-
-            if (send_ok == 0)
-            {
-                // increase number of jobs currently being processed
-                pending_jobs++;
-            }
-            else
-            {
-                /* If queue was full (EAGAIN), we simply try again later.
-                   For simplicity we do NOT drop the request:
-                   easiest is to re-send it to Req queue, but that can reorder.
-                   So here we just "do nothing" and rely on loop to pick next message.
-                   (Not perfect, but simple.) */
+    while (true) {
+        // if not yet storing a request, try to read a new one
+        if (!have_req) {
+            ssize_t r = mq_receive(mq_fd_request, (char *)&req, sizeof(req), NULL);
+            if (r >= 0) {
+                have_req = true;
+            } else if (errno != EAGAIN) {
+                // if receiving gives erorr EAGAIN then the request queue is empty so continue, otherwise real error
+                perror("mq_receive Req");
+                break;
             }
         }
-        else
-        {
-            if (errno != EAGAIN)
-            {
-                perror("mq_receive Req failed");
-                break;
+        
+        // if it is storing a request, send it to the job queues
+        if (have_req) {
+            // create job object
+            job_msg_t job;
+            job.request_id = held_req.request_id;
+            job.data = held_req.data;
+
+            if (held_req.service_id == 1 || held_req.service_id == 2) {
+                mqd_t target = (held_req.service_id == 1) ? mq_fd_S1 : mq_fd_S2;
+
+                if (mq_send(mq_fd_S1, (char *)&job, sizeof(job), 0) == 0) {
+                    // forwarded successfully, increase num of pending jobs and remove currently held message
+                    pending_jobs++;
+                    have_req = false;
+                } else {
+                    // if EAGAIN error is given when sending then job queue is full, otherwise real error
+                    if (errno != EAGAIN) {
+                        perror("mq_send failed");
+                        break;
+                    }
+                }
             }
         }
 
         // try to read a job response
         rsp_msg_t rsp;
         ssize_t s = mq_receive(mq_fd_response, (char *)&rsp, sizeof(rsp), NULL);
-        if (s >= 0)
-        {
+        if (s >= 0) {
             // write the response to output and decrease number of jobs being processed
             printf("%d -> %d\n", rsp.request_id, rsp.result);
             fflush(stdout);
             pending_jobs--;
-        }
-        else
-        {
-            if (errno != EAGAIN)
-            {
+        } else {
+            if (errno != EAGAIN) {
                 perror("mq_receive Rsp failed");
                 break;
             }
@@ -225,21 +188,19 @@ int main (int argc, char * argv[])
         {
             int status;
             pid_t w = waitpid(client_pid, &status, WNOHANG);
-            if (w > 0)
-            {
+            if (w > 0) {
                 client_done = true;
             }
         }
 
         // if client is done and there are no jobs left currently being processed then start termination
-        if (client_done && pending_jobs <= 0)
-        {
+        if (client_done && pending_jobs <= 0 && !have_req) {
             // also make sure there are no job responses left that need to be printed nor are there requests not yet sent to workers
             struct mq_attr a_req, a_rsp;
             if (mq_getattr(mq_fd_request, &a_req) == 0 
                 && mq_getattr(mq_fd_response, &a_rsp) == 0 
                 && a_req.mq_curmsgs == 0 
-                && a_rsp.mq_curmsgs == 0)
+                && a_rsp.mq_curmsgs == 0) 
             {
                 break;
             }
@@ -247,21 +208,17 @@ int main (int argc, char * argv[])
     }
 
     // terminate all the workers
-    for (int i = 0; i < N_SERV1; i++)
-    {
+    for (int i = 0; i < N_SERV1; i++) {
         kill(workers_s1[i], SIGTERM);
     }
-    for (int i = 0; i < N_SERV2; i++)
-    {
+    for (int i = 0; i < N_SERV2; i++) {
         kill(workers_s2[i], SIGTERM);
     }
 
-    for (int i = 0; i < N_SERV1; i++)
-    {
+    for (int i = 0; i < N_SERV1; i++) {
         waitpid(workers_s1[i], NULL, 0);
     }
-    for (int i = 0; i < N_SERV2; i++)
-    {
+    for (int i = 0; i < N_SERV2; i++) {
         waitpid(workers_s2[i], NULL, 0);
     }
 
