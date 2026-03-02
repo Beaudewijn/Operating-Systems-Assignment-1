@@ -45,9 +45,9 @@ int main (int argc, char * argv[])
     mqd_t req_queue = mq_open(req_queue_name, O_WRONLY);
     
     while(true) {
-        int jobID, data, serviceID;
+        int job_id, data, service_id;
 
-        int result = getNextRequest(&jobID, &data, &serviceID);
+        int result = getNextRequest(&job_id, &data, &service_id);
         if (result == NO_REQ) {
             break;
         }
@@ -56,12 +56,12 @@ int main (int argc, char * argv[])
             break;
         }
 
-        req_msg_t msg;
-        msg.request_id = jobID;
-        msg.service_id = serviceID;
-        msg.data = data;
+        req_msg_t req;
+        req.request_id = job_id;
+        req.service_id = service_id;
+        req.data = data;
 
-        if (mq_send(req_queue, (const char*)&msg, sizeof(req_msg_t), 0) == -1) {
+        if (mq_send(req_queue, (const char*)&req, sizeof(req_msg_t), 0) == -1) {
             perror("mq_send Req_queue");
             break;
         }

@@ -50,7 +50,10 @@ int main (int argc, char * argv[])
 
     while (true) {
         job_msg_t job;
-        mq_receive(s1_queue, (char *) &job, sizeof (job), NULL);
+        if (mq_receive(s1_queue, (char *) &job, sizeof (job), NULL) == -1) {
+            perror("worker_s1 mq_receive");
+            break;
+        }
 
         rsleep(10000);
 
@@ -59,7 +62,10 @@ int main (int argc, char * argv[])
         rsp.request_id = job.request_id;
         rsp.result = result;
 
-        mq_send(rsp_queue, (const char*)&rsp, sizeof(rsp), 0);
+        if (mq_send(rsp_queue, (const char*)&rsp, sizeof(rsp), 0) == -1) {
+            perror("worker_s1 mq_send");
+            break;
+        }
     }
     mq_close(s1_queue);
     mq_close(rsp_queue);
