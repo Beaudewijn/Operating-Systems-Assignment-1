@@ -60,7 +60,7 @@ int main (int argc, char * argv[])
 
     // request queue
     attr.mq_msgsize = sizeof (req_msg_t);
-    mqd_t mq_fd_request = mq_open (client2dealer_name, O_RDWR | O_CREAT | O_EXCL, 0600, &attr);
+    mqd_t mq_fd_request = mq_open (client2dealer_name, O_RDWR | O_CREAT | O_EXCL | O_NONBLOCK, 0600, &attr);
 
     // S1 queue
     attr.mq_msgsize = sizeof (job_msg_t);
@@ -72,7 +72,7 @@ int main (int argc, char * argv[])
 
     // response queue
     attr.mq_msgsize = sizeof (rsp_msg_t);
-    mqd_t mq_fd_response = mq_open (worker2dealer_name, O_RDWR | O_CREAT | O_EXCL, 0600, &attr);
+    mqd_t mq_fd_response = mq_open (worker2dealer_name, O_RDWR | O_CREAT | O_EXCL | O_NONBLOCK, 0600, &attr);
 
     //  * create the child processes (see process_test() and
     //    message_queue_test())
